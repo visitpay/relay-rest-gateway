@@ -39,6 +39,7 @@ class IncomingV1 {
             this.reciever.addEventListener('closingsession', this.onClosingSession.bind(this));
             this.reciever.addEventListener('error', this.onError.bind(this));
             await this.reciever.connect();
+            console.log("onConnection - socket: ", this.reciever.wsr)
         }
         console.info("Client connected:", req.ip);
         ws.on('close', () => {
@@ -54,17 +55,30 @@ class IncomingV1 {
     }
 
     async onMessage(ev) {
-        for (const x of ev.data.message.attachments) {
-            x.data = await this.reciever.fetchAttachment(x);
+        console.warn("onMessage ENTER");
+        try {
+            for (const x of ev.data.message.attachments) {
+                x.data = await this.reciever.fetchAttachment(x);
+            }
+            this.publish('message', {
+                expirationStartTimestamp: ev.data.expirationStartTimestamp,
+                body: JSON.parse(ev.data.message.body),
+                attachments: ev.data.message.attachments,
+                source: ev.data.source,
+                sourceDevice: ev.data.sourceDevice,
+                timestamp: ev.data.timestamp,
+            });
         }
-        this.publish('message', {
-            expirationStartTimestamp: ev.data.expirationStartTimestamp,
-            body: JSON.parse(ev.data.message.body),
-            attachments: ev.data.message.attachments,
-            source: ev.data.source,
-            sourceDevice: ev.data.sourceDevice,
-            timestamp: ev.data.timestamp,
-        });
+        catch (e) {
+            console.warn("onMessage - entering catch block");
+            console.warn(e);
+            console.warn("onMessage - leaving catch block - rethrowing");
+            throw( error );
+        }
+        finally {
+            console.warn("onMessage EXIT")
+        }
+        
     }
 
     async onReceipt(ev) {
