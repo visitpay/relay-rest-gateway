@@ -1,4 +1,6 @@
-FROM node:8
+FROM node:11
+ENV LC_ALL=C.UTF-8 \
+    NODE_ENV=production
 WORKDIR /usr/src/client
 COPY . .
 RUN npm install

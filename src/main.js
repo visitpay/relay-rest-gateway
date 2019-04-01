@@ -10,6 +10,7 @@ const expressWs = require('express-ws');
 
 const port = process.env.PORT || '8086';
 const listenAddr = process.env.LISTEN_ADDR || '127.0.0.1';
+const PROM_METRICS = process.env.PROM_METRICS === '1';
 const atlasUrl = process.env.ATLAS_URL;
 
 
@@ -26,10 +27,22 @@ process.on('unhandledRejection', ev => {
 async function main() {
     await relay.storage.initialize();
     const app = express(feathers());
-    app.use(morgan('dev'));  // logging
+    app.use(morgan('dev'));  // logging[]
     app.use(express.json());
     const ws = expressWs(app);
     app.configure(express.rest());
+    if (PROM_METRICS) {
+        const promBundle = require("express-prom-bundle");
+        app.use(promBundle({
+            includeMethod: true,
+            includePath: true,
+            promClient: {
+                collectDefaultMetrics: {
+                    timeout: 10000
+                }
+            },
+        }));
+    }
     app.use('/messages/outgoing/v1', new api.messages.OutgoingV1());
     const incomingMessagesV1 = new api.messages.IncomingV1();
     app.ws('/messages/incoming/v1', async (ws, req, next) => {

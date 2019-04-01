@@ -1,5 +1,13 @@
 const relay = require('librelay');
-
+const client = require('prom-client');
+const histogramMessage = new client.Histogram({
+  name: 'IncomingV1_Message',
+  help: 'This is how many messages are coming in over time.'
+});
+const histogramError = new client.Histogram({
+    name: 'IncomingV1_Error',
+    help: 'This is how many errors over time'
+});
 
 class OutgoingV1 {
     async create(data, params) {
@@ -7,7 +15,6 @@ class OutgoingV1 {
         return await sender.send(data);
     }
 }
-
 
 class IncomingV1 {
 
@@ -68,6 +75,7 @@ class IncomingV1 {
                 sourceDevice: ev.data.sourceDevice,
                 timestamp: ev.data.timestamp,
             });
+            histogramMessage.observe(1);
         }
         catch (e) {
             console.warn("onMessage - entering catch block");
@@ -121,6 +129,7 @@ class IncomingV1 {
     }
 
     onError(ev) {
+        histogramError.observe(1);
         this.publish('error', {ev});
     }
 }
