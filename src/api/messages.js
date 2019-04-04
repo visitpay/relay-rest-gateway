@@ -8,6 +8,9 @@ const histogramError = new client.Histogram({
     name: 'IncomingV1_Error',
     help: 'This is how many errors over time'
 });
+const gaugeIncomingConnections = new client.Gauge({ name: 'IncomingV1_Connection', help: 'Incomming connection count' });
+const gaugeSocketReadyState = new client.Gauge({ name: 'IncomingV1_Socket_ReadyState', help: 'Incomming connection count' });
+
 
 class OutgoingV1 {
     async create(data, params) {
@@ -34,6 +37,14 @@ class IncomingV1 {
         }
     }
 
+    onNeedConnectionmetrics(){
+        //Should I ever:  ???
+        //clearTimeout(this.metricsTimer);
+        if (this.reciever) {
+            console.log("_onNeedConnectionmetrics - socket: ", this.reciever.wsr.socket.readyState);
+            gaugeSocketReadyState.set(this.reciever.wsr.socket.readyState);
+        }
+    }
     async onConnection(ws, req) {
         this.clients.add(ws);
         if (!this.reciever) {
@@ -44,8 +55,16 @@ class IncomingV1 {
             this.reciever.addEventListener('sent', this.onSent.bind(this));
             this.reciever.addEventListener('read', this.onRead.bind(this));
             this.reciever.addEventListener('closingsession', this.onClosingSession.bind(this));
+            this.reciever.addEventListener('close', this.onClosingSession.bind(this));
             this.reciever.addEventListener('error', this.onError.bind(this));
             await this.reciever.connect();
+            gaugeIncomingConnections.inc();
+            console.log('Registering for close event from socket');
+            this.reciever.wsr.socket.on('close', function close() {
+                gaugeIncomingConnections.dec();
+                console.log('Socket (reciever.wsr.socket) disconnected');
+            });
+            this.metricsTimer = setTimeout(this.onNeedConnectionmetrics.bind(this), 30000);
             console.log("onConnection - socket: ", this.reciever.wsr)
         }
         console.info("Client connected:", req.ip);
@@ -56,13 +75,14 @@ class IncomingV1 {
     }
 
     async onKeyChange(ev) {
+        console.warn("onKeyChange: ", ev);
         // XXX TBD  Probably just autoaccept for now.
-        debugger;
+        //debugger;
         console.error("`keychange` event not handled");
     }
 
     async onMessage(ev) {
-        console.warn("onMessage ENTER");
+        console.warn("onMessage ENTER: ", ev);
         try {
             for (const x of ev.data.message.attachments) {
                 x.data = await this.reciever.fetchAttachment(x);
@@ -90,6 +110,7 @@ class IncomingV1 {
     }
 
     async onReceipt(ev) {
+        console.warn("onReceipt: ", ev);
         this.publish('receipt', {
             source: ev.proto.source,
             sourceDevice: ev.proto.sourceDevice,
@@ -113,6 +134,7 @@ class IncomingV1 {
     }
 
     async onRead(ev) {
+        console.warn("onRead: ", ev);
         this.publish('read', {
             sender: ev.read.sender,
             source: ev.read.source,
@@ -123,12 +145,15 @@ class IncomingV1 {
     }
 
     async onClosingSession(ev) {
+        console.warn("onClosingSession: ", ev);
+
         // XXX TBD
-        debugger;
+        //debugger;
         console.error("`closingsession` event not handled");
     }
 
     onError(ev) {
+        console.warn("onError: ", ev);
         histogramError.observe(1);
         this.publish('error', {ev});
     }
