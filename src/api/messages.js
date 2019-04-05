@@ -1,4 +1,4 @@
-const relay = require('librelay');
+const factory = require('../factory');
 const client = require('prom-client');
 const histogramMessage = new client.Histogram({
   name: 'IncomingV1_Message',
@@ -17,7 +17,7 @@ const gaugeExpressConnections = new client.Gauge({ name: 'ExpressWS_Connection',
 
 class OutgoingV1 {
     async create(data, params) {
-        const sender = await relay.MessageSender.factory();
+        const sender = await factory.getMessageSender();
         return await sender.send(data);
     }
 }
@@ -59,15 +59,15 @@ class IncomingV1 {
         this.clients.add(ws);
         gaugeExpressConnections.inc();
         if (!this.reciever) {
-            this.reciever = await relay.MessageReceiver.factory();
+            this.reciever = await factory.getMessageReceiver();
             this.reciever.addEventListener('keychange', this.onKeyChange.bind(this));
             this.reciever.addEventListener('message', this.onMessage.bind(this));
             this.reciever.addEventListener('receipt', this.onReceipt.bind(this));
             this.reciever.addEventListener('sent', this.onSent.bind(this));
             this.reciever.addEventListener('read', this.onRead.bind(this));
             this.reciever.addEventListener('closingsession', this.onClosingSession.bind(this));
-            this.reciever.addEventListener('close', this.onClosingSession.bind(this));
             this.reciever.addEventListener('error', this.onError.bind(this));
+            this.reciever.addEventListener('close', this.onClose.bind(this));
             console.log('Registering for open event from socket');
             this.reciever.wsr.addEventListener('open', function open() {
                 //pretty sure i'll never get this.
@@ -176,6 +176,15 @@ class IncomingV1 {
         console.warn("onError: ", ev);
         histogramError.observe(1);
         this.publish('error', {ev});
+    }
+
+    onClose(ev) {
+        this.publish('close', {ev});
+        console.warn("Message Receiver was closed: Shutting down client connections");
+        this.reciever = null;
+        for (const x of this.clients) {
+            x.close();
+        }
     }
 }
 

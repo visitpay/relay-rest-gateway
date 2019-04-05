@@ -29,7 +29,7 @@ async function main() {
     const app = express(feathers());
     app.use(morgan('dev'));  // logging[]
     app.use(express.json());
-    const ws = expressWs(app);
+    expressWs(app);
     app.configure(express.rest());
     if (PROM_METRICS) {
         const promBundle = require("express-prom-bundle");
