@@ -9,7 +9,10 @@ const histogramError = new client.Histogram({
     help: 'This is how many errors over time'
 });
 const gaugeIncomingConnections = new client.Gauge({ name: 'IncomingV1_Connection', help: 'Incomming connection count' });
+const gaugeIncomingDisconnect = new client.Gauge({ name: 'IncomingV1_SignalDisconnect', help: 'Incomming signal disconnects' });
 const gaugeSocketReadyState = new client.Gauge({ name: 'IncomingV1_Socket_ReadyState', help: 'Incomming connection count' });
+
+const gaugeExpressConnections = new client.Gauge({ name: 'ExpressWS_Connection', help: 'Incomming connection count from ChatGateway' });
 
 
 class OutgoingV1 {
@@ -40,13 +43,21 @@ class IncomingV1 {
     onNeedConnectionmetrics(){
         //Should I ever:  ???
         //clearTimeout(this.metricsTimer);
-        if (this.reciever) {
-            console.log("_onNeedConnectionmetrics - socket: ", this.reciever.wsr.socket.readyState);
-            gaugeSocketReadyState.set(this.reciever.wsr.socket.readyState);
+        if (this.reciever ) {
+            try {
+                console.log("onNeedConnectionmetrics - socket: ", this.reciever.wsr.socket.readyState);
+                gaugeSocketReadyState.set(this.reciever.wsr.socket.readyState);
+            }
+            catch (e) {
+                console.warn("onNeedConnectionmetrics - entering catch block");
+                console.warn(e);
+                gaugeSocketReadyState.set(0);
+            }
         }
     }
     async onConnection(ws, req) {
         this.clients.add(ws);
+        gaugeExpressConnections.inc();
         if (!this.reciever) {
             this.reciever = await relay.MessageReceiver.factory();
             this.reciever.addEventListener('keychange', this.onKeyChange.bind(this));
@@ -57,18 +68,27 @@ class IncomingV1 {
             this.reciever.addEventListener('closingsession', this.onClosingSession.bind(this));
             this.reciever.addEventListener('close', this.onClosingSession.bind(this));
             this.reciever.addEventListener('error', this.onError.bind(this));
-            await this.reciever.connect();
-            gaugeIncomingConnections.inc();
-            console.log('Registering for close event from socket');
-            this.reciever.wsr.socket.on('close', function close() {
-                gaugeIncomingConnections.dec();
-                console.log('Socket (reciever.wsr.socket) disconnected');
+            console.log('Registering for open event from socket');
+            this.reciever.wsr.addEventListener('open', function open() {
+                //pretty sure i'll never get this.
+                //librelay-node\src\websocket_resource.js:158 
+                //Has an await, doesnt register event that this could get till later
+                gaugeIncomingConnections.set(1);
+                console.log('Socket (reciever.wsr) opened');
             });
-            this.metricsTimer = setTimeout(this.onNeedConnectionmetrics.bind(this), 30000);
+            await this.reciever.connect();
+            console.log('Registering for close event from socket');
+            this.reciever.wsr.addEventListener('close', function close() {
+                gaugeIncomingConnections.set(0);
+                gaugeIncomingDisconnect.inc();
+                console.log('Socket (reciever.wsr) disconnected');
+            });
+            this.metricsTimer = setInterval(this.onNeedConnectionmetrics.bind(this), 30000);
             console.log("onConnection - socket: ", this.reciever.wsr)
         }
         console.info("Client connected:", req.ip);
         ws.on('close', () => {
+            gaugeExpressConnections.dec();
             console.warn("Client disconnected: ", req.ip);
             this.clients.delete(ws);
         });

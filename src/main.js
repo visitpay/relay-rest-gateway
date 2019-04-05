@@ -23,8 +23,6 @@ process.on('unhandledRejection', ev => {
         process.exit(1);
     }
 });
-const gaugeExpressConnections = new client.Gauge({ name: 'ExpressWS_Connection', help: 'Incomming connection count(from CG, i think)' });
-
 
 async function main() {
     await relay.storage.initialize();
@@ -48,14 +46,12 @@ async function main() {
     app.use('/messages/outgoing/v1', new api.messages.OutgoingV1());
     const incomingMessagesV1 = new api.messages.IncomingV1();
     app.ws('/messages/incoming/v1', async (ws, req, next) => {
-        gaugeExpressConnections.inc();
         try {
             await incomingMessagesV1.onConnection(ws, req);
         } catch(e) {
             console.error("WebSocket Error:", e);
             next(e);
         }
-        gaugeExpressConnections.dec();
     });
     app.use('/auth/v1', new api.auth.AuthV1({atlasUrl}));
     app.use('/account/v1', new api.account.AccountV1());
